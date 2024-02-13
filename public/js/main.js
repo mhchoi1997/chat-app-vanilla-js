@@ -23,32 +23,82 @@ socket.on('roomUsers', (({room, users}) => {
 
 //Getting the message from the back-end
 socket.on('message', message => {
-    console.log(message);
     outputMessages(message);
 });
 
+function dataURLtoFile(dataurl, filename) {
+
+    let arr = dataurl.split(','),
+        mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]),
+        n = bstr.length,
+        u8arr = new Uint8Array(n);
+
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+
+    return new File([u8arr], filename, {type:mime});
+}
+
+
 chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const msg = e.target.elements.msg;
 
-    //Send message to server
-    socket.emit('chatMessage', msg.value);
-    msg.value = '';
-    msg.focus();
+    const fileReader = new FileReader();
+    const messageInput = e.target.elements[0];
+    const form = e.target.elements[1];
+
+    const msg = messageInput.value
+    const file = form.files[0];
+
+    if ((!!file) === true) {
+        fileReader.onload = function () {
+            socket.emit('chatMessage', { msg, file: { filename: file.name, result: this.result } });
+        };
+        fileReader.readAsDataURL(file)
+    }
+    else {
+        socket.emit('chatMessage', msg);
+        messageInput.value = '';
+        messageInput.focus();
+    }
+
 });
 
-function outputMessages (msg) {
+function outputMessages (message) {
     const messageContainer = document.querySelector('.chat-messages');
 
-    var html = '';
+    let html = '';
     html += '<div class="message">';
-    html += '<p class="meta">' + msg.username + ' <span>' + msg.time +'</span></p>';
-    html += '<p class="text">' + msg.text +'</p>';
-    html += '</div>';
+    html += `<p class="meta">${message.username}<span>${message.time}</span></p>`;
+    
+    if (typeof message !== 'object' || (typeof message === 'object' && (!!message?.text?.file) === false)) {
+        const text = message?.text ?? message;
+        html += `<p class="text">${text}</p>`;
+        html += '</div>';
 
-    messageContainer.insertAdjacentHTML('beforeend', html);
+        messageContainer.insertAdjacentHTML('beforeend', html);
+        document.querySelector('.message:last-child').scrollIntoView({
+            behavior: 'smooth'
+        });
+    }
+    else {
+        const { msg, file } = message.text;
+        const reader = new FileReader();
 
-    document.querySelector('.message:last-child').scrollIntoView({
-        behavior: 'smooth'
-    });
+        reader.onload = () => {
+            html += `<p class="text">${msg}</p>`;
+            html += `<a href="${reader.result}" download>${file.filename}</a>`;
+            html += '</div>';
+            
+            messageContainer.insertAdjacentHTML('beforeend', html);
+            document.querySelector('.message:last-child').scrollIntoView({
+                behavior: 'smooth'
+            });
+        };
+    
+        const test = dataURLtoFile(file.result, file.filename ?? 'undefine');
+        reader.readAsDataURL(test);
+    }
 }
