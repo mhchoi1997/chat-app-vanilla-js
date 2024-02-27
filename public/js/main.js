@@ -26,7 +26,7 @@ socket.on('message', message => {
     outputMessages(message);
 });
 
-function dataURLtoFile(dataurl, filename) {
+function dataURLtoFile(dataurl, filename = 'undefine') {
 
     let arr = dataurl.split(','),
         mime = arr[0].match(/:(.*?);/)[1],
@@ -45,23 +45,25 @@ function dataURLtoFile(dataurl, filename) {
 chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
 
-    const fileReader = new FileReader();
-    const messageInput = e.target.elements[0];
+    const reader = new FileReader();
+    const input = e.target.elements[0];
     const form = e.target.elements[1];
 
-    const msg = messageInput.value
+    const msg = input.value
     const file = form.files[0];
 
     if ((!!file) === true) {
-        fileReader.onload = function () {
+        reader.onload = function () {
             socket.emit('chatMessage', { msg, file: { filename: file.name, result: this.result } });
+            input.value = '';
+            input.focus();
         };
-        fileReader.readAsDataURL(file)
+        reader.readAsDataURL(file)
     }
     else {
         socket.emit('chatMessage', msg);
-        messageInput.value = '';
-        messageInput.focus();
+        input.value = '';
+        input.focus();
     }
 
 });
@@ -69,16 +71,19 @@ chatForm.addEventListener('submit', (e) => {
 function outputMessages (message) {
     const messageContainer = document.querySelector('.chat-messages');
 
-    let html = '';
-    html += '<div class="message">';
+    let html = '<div class="message">';
     html += `<p class="meta">${message.username}<span>${message.time}</span></p>`;
     
-    if (typeof message !== 'object' || (typeof message === 'object' && (!!message?.text?.file) === false)) {
+    const isObject = typeof message === 'object';
+    const includeFile = (!!message?.text?.file) === true;
+
+    if (!isObject || (isObject && !includeFile)) {
         const text = message?.text ?? message;
         html += `<p class="text">${text}</p>`;
         html += '</div>';
 
         messageContainer.insertAdjacentHTML('beforeend', html);
+        // 메시지가 추가될때, 스크롤을 스무스하게 이동한다.
         document.querySelector('.message:last-child').scrollIntoView({
             behavior: 'smooth'
         });
@@ -88,17 +93,29 @@ function outputMessages (message) {
         const reader = new FileReader();
 
         reader.onload = () => {
+            // base64형태로 받은 다음에 href속성 또는 src속성에 지정한다.
             html += `<p class="text">${msg}</p>`;
-            html += `<a href="${reader.result}" download>${file.filename}</a>`;
+            if (!reader.result.includes('data:image')) {
+                // 이미지 파일이 아닌 나머지 파일 포맷일 때...
+                html += `Download to <a href="${reader.result}" download="${file.filename}">${file.filename}</a>`;
+            }
+            else {
+                // 이미지로 올라오면 img태그로 표시하고 img를 클릭하면 다운로드가 가능하도록한다.
+                html += `<a href="${reader.result}" download>
+                    <img src="${reader.result}" alt="${file.filename}" width="200" height="200">
+                </a>`;
+            }
             html += '</div>';
             
             messageContainer.insertAdjacentHTML('beforeend', html);
+            
+            // 메시지가 추가될때, 스크롤을 스무스하게 이동한다.
             document.querySelector('.message:last-child').scrollIntoView({
                 behavior: 'smooth'
             });
         };
     
-        const test = dataURLtoFile(file.result, file.filename ?? 'undefine');
+        const test = dataURLtoFile(file.result, file.filename);
         reader.readAsDataURL(test);
     }
 }
